@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sqlfmt - SQL Formatter</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+    background: #0d1117;
+    color: #c9d1d9;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+  }
+  header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #58a6ff;
+  }
+  header h1 span { color: #8b949e; font-weight: 400; }
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .controls label {
+    font-size: 12px;
+    color: #8b949e;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .controls select, .controls input[type="number"] {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .controls input[type="number"] { width: 50px; }
+  .main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .panel:first-child { border-right: 1px solid #30363d; }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    font-size: 12px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .btn {
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: #30363d; }
+  .btn-primary {
+    background: #238636;
+    border-color: #2ea043;
+    color: #fff;
+  }
+  .btn-primary:hover { background: #2ea043; }
+  .btn-copy.copied {
+    background: #238636;
+    border-color: #2ea043;
+    color: #fff;
+  }
+  textarea {
+    flex: 1;
+    background: #0d1117;
+    color: #c9d1d9;
+    border: none;
+    padding: 16px;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: none;
+    outline: none;
+    tab-size: 2;
+  }
+  textarea::placeholder { color: #484f58; }
+  pre {
+    flex: 1;
+    background: #0d1117;
+    color: #c9d1d9;
+    padding: 16px;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow: auto;
+    white-space: pre;
+    tab-size: 2;
+  }
+  /* Syntax colors in output */
+  .kw { color: #ff7b72; font-weight: 600; }
+  .str { color: #a5d6ff; }
+  .num { color: #79c0ff; }
+  .cmt { color: #484f58; font-style: italic; }
+  .op { color: #d2a8ff; }
+  .fn { color: #d2a8ff; }
+
+  @media (max-width: 768px) {
+    .main { flex-direction: column; }
+    .panel:first-child { border-right: none; border-bottom: 1px solid #30363d; }
+    .controls { gap: 6px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>sqlfmt <span>SQL Formatter</span></h1>
+  <div class="controls">
+    <label>Case:
+      <select id="case-select">
+        <option value="upper">UPPERCASE</option>
+        <option value="lower">lowercase</option>
+      </select>
+    </label>
+    <label>Indent:
+      <input type="number" id="indent-input" value="2" min="1" max="8">
+    </label>
+    <label>
+      <input type="checkbox" id="compact-check"> Compact
+    </label>
+  </div>
+</header>
+<div class="main">
+  <div class="panel">
+    <div class="panel-header">
+      <span>Input</span>
+      <button class="btn" onclick="clearInput()">Clear</button>
+    </div>
+    <textarea id="input" placeholder="Paste your SQL here..." spellcheck="false">SELECT u.id, u.name, u.email, o.total, o.created_at FROM users u INNER JOIN orders o ON u.id = o.user_id WHERE u.status = 'active' AND o.total > 100 ORDER BY o.created_at DESC LIMIT 50</textarea>
+  </div>
+  <div class="panel">
+    <div class="panel-header">
+      <span>Output</span>
+      <button class="btn btn-copy" id="copy-btn" onclick="copyOutput()">Copy</button>
+    </div>
+    <pre id="output"></pre>
+  </div>
+</div>
+
+<script>
+const inputEl = document.getElementById('input');
+const outputEl = document.getElementById('output');
+const caseEl = document.getElementById('case-select');
+const indentEl = document.getElementById('indent-input');
+const compactEl = document.getElementById('compact-check');
+const copyBtn = document.getElementById('copy-btn');
+
+let debounceTimer;
+let lastFormatted = '';
+
+function getOptions() {
+  return {
+    uppercase: caseEl.value === 'upper',
+    indent: parseInt(indentEl.value, 10) || 2,
+    compact: compactEl.checked,
+  };
+}
+
+function highlightSQL(text) {
+  // Escape HTML
+  const esc = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Highlight keywords, strings, numbers, comments
+  return esc
+    .replace(/--.*$/gm, '<span class="cmt">$&</span>')
+    .replace(/\/\*[\s\S]*?\*\//g, '<span class="cmt">$&</span>')
+    .replace(/'[^']*'/g, '<span class="str">$&</span>')
+    .replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>')
+    .replace(/\b(SELECT|DISTINCT|FROM|WHERE|AND|OR|NOT|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|ON|ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT|OFFSET|INSERT\s+INTO|VALUES|UPDATE|SET|DELETE\s+FROM|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|AS|IN|BETWEEN|LIKE|IS|EXISTS|CASE|WHEN|THEN|ELSE|END|ASC|DESC|UNION|INTERSECT|EXCEPT|NULL|NOT\s+NULL|PRIMARY\s+KEY|FOREIGN\s+KEY|DEFAULT|CASCADE|RETURNING|WITH|RECURSIVE|COUNT|SUM|AVG|MIN|MAX|COALESCE|CAST)\b/gi,
+      '<span class="kw">$&</span>')
+    ;
+}
+
+async function format() {
+  const sql = inputEl.value;
+  if (!sql.trim()) {
+    outputEl.innerHTML = '';
+    lastFormatted = '';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/format', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql, options: getOptions() }),
+    });
+    const data = await res.json();
+    if (data.formatted) {
+      lastFormatted = data.formatted;
+      outputEl.innerHTML = highlightSQL(data.formatted);
+    } else if (data.error) {
+      outputEl.textContent = 'Error: ' + data.error;
+      lastFormatted = '';
+    }
+  } catch (e) {
+    outputEl.textContent = 'Error: ' + e.message;
+    lastFormatted = '';
+  }
+}
+
+function debounceFormat() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(format, 150);
+}
+
+inputEl.addEventListener('input', debounceFormat);
+caseEl.addEventListener('change', format);
+indentEl.addEventListener('change', format);
+compactEl.addEventListener('change', format);
+
+// Tab key in textarea
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = inputEl.selectionStart;
+    const end = inputEl.selectionEnd;
+    inputEl.value = inputEl.value.substring(0, s) + '  ' + inputEl.value.substring(end);
+    inputEl.selectionStart = inputEl.selectionEnd = s + 2;
+    debounceFormat();
+  }
+});
+
+function clearInput() {
+  inputEl.value = '';
+  outputEl.innerHTML = '';
+  lastFormatted = '';
+  inputEl.focus();
+}
+
+function copyOutput() {
+  if (!lastFormatted) return;
+  navigator.clipboard.writeText(lastFormatted).then(() => {
+    copyBtn.textContent = 'Copied!';
+    copyBtn.classList.add('copied');
+    setTimeout(() => {
+      copyBtn.textContent = 'Copy';
+      copyBtn.classList.remove('copied');
+    }, 1500);
+  });
+}
+
+// Format on load
+format();
+</script>
+</body>
+</html>

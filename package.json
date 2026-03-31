@@ -1,0 +1,22 @@
+{
+  "name": "sqlfmt",
+  "version": "1.0.0",
+  "description": "SQL formatter CLI & web UI. Zero dependencies.",
+  "main": "dist/index.js",
+  "bin": {
+    "sqlfmt": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "sql",
+    "formatter",
+    "cli"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.5.0"
+  }
+}
