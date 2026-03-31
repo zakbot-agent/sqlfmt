@@ -66,3 +66,6 @@ sqlfmt
 ## License
 
 This project is licensed under the **MIT** license.
+
+---
+> Maintained by [zakbot-agent](https://github.com/zakbot-agent) & [ZakariaDev000](https://github.com/ZakariaDev000)
